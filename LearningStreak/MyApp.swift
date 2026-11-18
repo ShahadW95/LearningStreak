@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 @main
 struct MyApp: App {
@@ -50,17 +51,17 @@ struct RootView: View {
         .onChange(of: scenePhase) { _, phase in
             if phase == .active { viewModel.refreshDate() }
         }
-        .task(id: viewModel.calendar.timeZone.identifier) {
-            // ننتظر منتصف الليل القادم ثم نحدّث التاريخ؛ الخروج من الشاشة يلغي الانتظار.
-            while !Task.isCancelled {
-                viewModel.refreshDate()
-                let date = Date()
-                let start = viewModel.calendar.startOfDay(for: date)
-                let nextDay = viewModel.calendar.date(byAdding: .day, value: 1, to: start)!
-                let seconds = max(1, nextDay.timeIntervalSince(date))
-                do { try await Task.sleep(for: .seconds(seconds)) }
-                catch { return }
-            }
+        // النظام ينبهنا عند تغيّر الساعة/اليوم؛ العودة من الخلفية تُفحص بالأعلى أيضًا.
+        .onReceive(NotificationCenter.default.publisher(for: UIApplication.significantTimeChangeNotification)) { _ in
+            viewModel.refreshDate()
+        }
+        .task(id: viewModel.nextRefreshDate) {
+            // مهمة واحدة تستيقظ عند الحد التالي (منتصف الليل أو الثامنة).
+            // تغيّر الحد يلغي المهمة السابقة ويجدول الجديدة؛ لا نحتاج مؤقتًا يعمل كل ثانية.
+            let seconds = max(0, viewModel.nextRefreshDate.timeIntervalSinceNow)
+            do { try await Task.sleep(for: .seconds(seconds)) }
+            catch { return }
+            viewModel.refreshDate()
         }
     }
 }

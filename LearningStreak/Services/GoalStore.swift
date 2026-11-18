@@ -9,6 +9,8 @@ struct GoalSnapshot: Codable {
     // Optional حتى تبقى ملفات النسخة الأولى قابلة للتحميل بدون فقد البيانات.
     var archivedLearnedDates: Set<Date>? = nil
     var archivedFrozenDates: Set<Date>? = nil
+    // يوم الفشل محفوظ حتى لا تعيد إعادة فتح التطبيق تفعيل هدف انتهت مهلته.
+    var failedOnDay: Date? = nil
     var timeZoneID: String = TimeZone.current.identifier
 }
 

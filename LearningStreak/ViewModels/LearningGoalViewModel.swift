@@ -13,6 +13,9 @@ final class LearningGoalViewModel {
     private(set) var frozenDates: Set<Date> = []
     private(set) var archivedLearnedDates: Set<Date> = []
     private(set) var archivedFrozenDates: Set<Date> = []
+    private(set) var failedOnDay: Date?
+    // يوم التعويض المحدد في المهلة؛ ليس اختيارًا حرًا لتعديل أيام قديمة.
+    private(set) var recoveryDay: Date?
     private(set) var loadFailed = false
     var errorMessage: String?
 
@@ -55,15 +58,59 @@ final class LearningGoalViewModel {
         guard let goal = currentGoal else { return nil }
         return goal.duration.endDate(from: goal.startDate, calendar: calendar)
     }
-    var isGoalFinished: Bool { endDate.map { today >= $0 } ?? false }
-    var isActiveToday: Bool {
-        guard let goal = currentGoal, let endDate else { return false }
-        return !loadFailed && today >= goal.startDate && today < endDate
+    // فشل أي يوم يقفل الهدف فورًا، وليس عند نهاية الأسبوع/الشهر.
+    var hasFailedGoal: Bool { failedOnDay != nil || expiredMissingDay != nil }
+    var isGoalFinished: Bool {
+        guard let endDate else { return false }
+        if hasFailedGoal { return true }
+        // آخر يوم أيضًا يستحق مهلة الصباح؛ لا نعلن فشلًا أو نجاحًا وهو ما زال قابلًا للتعويض.
+        return referenceDate >= endDate && firstUnrecordedPastDay == nil
     }
-    // شروط الأزرار للعرض، وتُستخدم مرة ثانية داخل العمليات لمنع تجاوز القواعد.
-    var canLogToday: Bool { isActiveToday && !hasLearnedToday }
-    var canFreezeToday: Bool {
-        isActiveToday && !hasLearnedToday && !hasFrozenToday && remainingFreezes > 0
+
+    // الأزرار تسجل لليوم الحالي عادة، ولليوم الفائت فقط أثناء التعويض الواضح على الشاشة.
+    var activityDate: Date { recoveryDay ?? today }
+    var hasLearnedActivityDay: Bool { learnedDates.contains(activityDate) }
+    var hasFrozenActivityDay: Bool { frozenDates.contains(activityDate) }
+    var recoveryDeadline: Date? { recoveryDay.map { deadline(for: $0) } }
+    var hasRecordedRecoveryDay: Bool {
+        recoveryDay != nil && (hasLearnedActivityDay || hasFrozenActivityDay)
+    }
+    private var canEditActivityDay: Bool {
+        guard let goal = currentGoal, let endDate else { return false }
+        return !loadFailed && !isGoalFinished && activityDate >= goal.startDate && activityDate < endDate
+            && referenceDate < deadline(for: activityDate)
+    }
+    var canLogSelectedDay: Bool { canEditActivityDay }
+    var canFreezeSelectedDay: Bool {
+        canEditActivityDay && (hasFrozenActivityDay || remainingFreezes > 0)
+    }
+
+    // حد المهلة = الثامنة صباح اليوم التالي في تقويم التطبيق.
+    // في الرياض: 24 ساعة لليوم + 8 ساعات إضافية. في مناطق DST نتبع اليوم التقويمي والثامنة محليًا.
+    func deadline(for day: Date) -> Date {
+        let nextDay = calendar.date(byAdding: .day, value: 1, to: calendar.startOfDay(for: day))!
+        return calendar.date(bySettingHour: 8, minute: 0, second: 0, of: nextDay)!
+    }
+
+    // نفحص من البداية حتى لا تخفي العودة بعد أيام طويلة أول يوم ضاعت مهلته.
+    private var firstUnrecordedPastDay: Date? {
+        guard let goal = currentGoal, let endDate else { return nil }
+        var day = goal.startDate
+        while day < min(today, endDate) {
+            if !learnedDates.contains(day) && !frozenDates.contains(day) { return day }
+            day = calendar.date(byAdding: .day, value: 1, to: day)!
+        }
+        return nil
+    }
+    private var expiredMissingDay: Date? {
+        guard let day = firstUnrecordedPastDay, referenceDate >= deadline(for: day) else { return nil }
+        return day
+    }
+
+    // الواجهة تستيقظ عند منتصف الليل وعند الثامنة، وتعيد الفحص عند العودة من الخلفية أيضًا.
+    var nextRefreshDate: Date {
+        let eightAM = calendar.date(bySettingHour: 8, minute: 0, second: 0, of: today)!
+        return referenceDate < eightAM ? eightAM : calendar.date(byAdding: .day, value: 1, to: today)!
     }
     var totalDays: Int {
         guard let goal = currentGoal, let endDate else { return 0 }
@@ -79,7 +126,7 @@ final class LearningGoalViewModel {
     // TODO(decision): Freeze يحافظ على الاتصال لكنه لا يزيد عدد أيام التعلّم.
     // اليوم الحالي غير المسجل لا يكسر ستريك أمس قبل انتهاء اليوم.
     var currentStreak: Int {
-        guard let goal = currentGoal, let endDate else { return 0 }
+        guard let goal = currentGoal, let endDate, !hasFailedGoal else { return 0 }
         var day = min(today, calendar.date(byAdding: .day, value: -1, to: endDate)!)
         if day == today && status(on: day) == .pending {
             day = calendar.date(byAdding: .day, value: -1, to: day)!
@@ -89,6 +136,7 @@ final class LearningGoalViewModel {
             switch status(on: day) {
             case .learned: count += 1
             case .frozen: break
+            case .pending where day < today && referenceDate < deadline(for: day): break
             case .missed, .pending: return count
             }
             day = calendar.date(byAdding: .day, value: -1, to: day)!
@@ -114,10 +162,33 @@ final class LearningGoalViewModel {
         let day = calendar.startOfDay(for: date)
         if learnedDates.contains(day) { return .learned }
         if frozenDates.contains(day) { return .frozen }
-        return day < today ? .missed : .pending
+        if day < today && referenceDate >= deadline(for: day) { return .missed }
+        return .pending
     }
 
-    func refreshDate() { referenceDate = now() }
+    // لا نعتمد على بقاء التطبيق مفتوحًا: نستنتج الفشل من التواريخ المحفوظة عند كل فتح/عملية.
+    func refreshDate() {
+        referenceDate = now()
+        guard !loadFailed else { return }
+        if failedOnDay == nil, let day = expiredMissingDay {
+            var next = snapshot
+            next.failedOnDay = day
+            _ = commit(next)
+        }
+        guard !hasFailedGoal else { recoveryDay = nil; return }
+        if let day = recoveryDay, referenceDate >= deadline(for: day) { recoveryDay = nil }
+        if recoveryDay == nil, let day = firstUnrecordedPastDay,
+           referenceDate < deadline(for: day) {
+            recoveryDay = day
+        }
+    }
+
+    // بعد تعويض أمس، المستخدم ينتقل صراحة إلى اليوم؛ لا نجعل الضغطة التالية تلغي/تسجل يومًا مختلفًا فجأة.
+    func continueToToday() {
+        refreshDate()
+        guard hasRecordedRecoveryDay else { return }
+        recoveryDay = nil
+    }
 
     // ننشئ هدفًا فقط إذا الاسم صالح وما فيه هدف حالي؛ الحفظ هو اللي يثبت الإنشاء.
     func startLearning() {
@@ -133,29 +204,40 @@ final class LearningGoalViewModel {
                                 startDate: startCalendar.startOfDay(for: now()))
         var next = snapshot
         next.goal = goal
+        next.failedOnDay = nil
         next.learnedDates = []
         next.frozenDates = []
         next.timeZoneID = zone
         _ = commit(next)
     }
 
-    // نحدّث التاريخ ثم نتحقق من القاعدة هنا، وليس فقط بتعطيل زر الواجهة.
-    func logLearnedToday() {
+    // الضغط على Log يبدّل الحالة: Learned → غير مسجل، أو أي حالة أخرى → Learned.
+    // إزالة Freeze تعيد رصيده لأن الرصيد مشتق من عدد الأيام المجمدة، وليس عدادًا منفصلًا.
+    func toggleLearned() {
         refreshDate()
-        guard canLogToday else { return }
+        guard canLogSelectedDay else { return }
         var next = snapshot
-        // التعلّم يستبدل Freeze لليوم نفسه ويرجّع رصيده؛ لا نسجل الحالتين معًا.
-        next.frozenDates.remove(today)
-        next.learnedDates.insert(today)
+        if hasLearnedActivityDay {
+            next.learnedDates.remove(activityDate)
+        } else {
+            next.frozenDates.remove(activityDate)
+            next.learnedDates.insert(activityDate)
+        }
         _ = commit(next)
     }
 
-    // Freeze لليوم الحالي فقط، بشرط وجود رصيد وعدم تسجيل التعلّم مسبقًا.
-    func freezeToday() {
+    // Frozen → غير مسجل، أو Learned/غير مسجل → Frozen بشرط وجود رصيد.
+    // نتحقق قبل إزالة Learned: نفاد الرصيد لا يمسح حالة التعلّم المسجلة.
+    func toggleFrozen() {
         refreshDate()
-        guard canFreezeToday else { return }
+        guard canFreezeSelectedDay else { return }
         var next = snapshot
-        next.frozenDates.insert(today)
+        if hasFrozenActivityDay {
+            next.frozenDates.remove(activityDate)
+        } else {
+            next.learnedDates.remove(activityDate)
+            next.frozenDates.insert(activityDate)
+        }
         _ = commit(next)
     }
 
@@ -173,6 +255,7 @@ final class LearningGoalViewModel {
         next.archivedLearnedDates = allLearnedDates
         next.archivedFrozenDates = allFrozenDates
         next.goal = goal
+        next.failedOnDay = nil
         next.learnedDates = []
         next.frozenDates = []
         return commit(next)
@@ -186,6 +269,7 @@ final class LearningGoalViewModel {
         next.archivedLearnedDates = allLearnedDates
         next.archivedFrozenDates = allFrozenDates
         next.goal = nil
+        next.failedOnDay = nil
         next.learnedDates = []
         next.frozenDates = []
         guard commit(next) else { return false }
@@ -195,19 +279,19 @@ final class LearningGoalViewModel {
     }
 
     // MARK: - بيانات الواجهة والتقويم
-    // نتيجة الهدف ليست مجرد انتهاء الوقت: نتأكد أن كل يوم كان Learned أو Frozen.
-    // TODO(decision): هذا معيار مبدئي لأن الصور لا تحدد الحد المطلوب لأيام التعلّم صراحة.
+    // النجاح بعد نهاية المدة، بشرط أن كل الأيام مغطاة ولم يفشل أي يوم بقاعدة المهلة.
     var didMeetGoal: Bool {
-        isGoalFinished && learnedCount + freezeCount == totalDays
+        isGoalFinished && !hasFailedGoal && totalDays > 0 && learnedCount + freezeCount == totalDays
     }
 
     var allLearnedDates: Set<Date> { archivedLearnedDates.union(learnedDates) }
     var allFrozenDates: Set<Date> { archivedFrozenDates.union(frozenDates) }
 
-    // صف الأسبوع للعرض فقط؛ تسجيل النشاط دائمًا لليوم الحالي.
+    // صف الأسبوع للعرض فقط؛ تعديل يوم سابق محصور بيوم التعويض أثناء مهلته.
     var weekDates: [Date] {
         // بعد انتهاء الهدف نعرض أسبوعه الأخير بدل أسبوع جديد فارغ.
-        let anchor = isGoalFinished ? calendar.date(byAdding: .day, value: -1, to: endDate!)! : today
+        let anchor = failedOnDay ?? expiredMissingDay ?? (isGoalFinished
+            ? calendar.date(byAdding: .day, value: -1, to: endDate!)! : today)
         let weekday = calendar.component(.weekday, from: anchor)
         let sunday = calendar.date(byAdding: .day, value: -(weekday - 1), to: anchor)!
         return (0..<7).map { calendar.date(byAdding: .day, value: $0, to: sunday)! }
@@ -256,7 +340,7 @@ final class LearningGoalViewModel {
     private var snapshot: GoalSnapshot {
         GoalSnapshot(goal: currentGoal, learnedDates: learnedDates,
                      frozenDates: frozenDates, archivedLearnedDates: archivedLearnedDates,
-                     archivedFrozenDates: archivedFrozenDates, timeZoneID: timeZoneID)
+                     archivedFrozenDates: archivedFrozenDates, failedOnDay: failedOnDay, timeZoneID: timeZoneID)
     }
 
     // نحفظ أولًا ثم نعرض النتيجة؛ عند الفشل تبقى البيانات السابقة ورسالة تسمح بالمحاولة.
@@ -274,7 +358,10 @@ final class LearningGoalViewModel {
     }
 
     private func apply(_ saved: GoalSnapshot) {
+        // الانتقال لهدف جديد يلغي سياق التعويض الخاص بالهدف السابق.
+        if currentGoal?.id != saved.goal?.id { recoveryDay = nil }
         currentGoal = saved.goal
+        failedOnDay = saved.failedOnDay
         learnedDates = saved.learnedDates
         frozenDates = saved.frozenDates
         archivedLearnedDates = saved.archivedLearnedDates ?? []
@@ -298,7 +385,7 @@ final class LearningGoalViewModel {
             $0 == archiveCalendar.startOfDay(for: $0)
         }) else { throw GoalStore.StoreError.invalidData }
         guard let goal = saved.goal else {
-            guard saved.learnedDates.isEmpty && saved.frozenDates.isEmpty else {
+            guard saved.learnedDates.isEmpty && saved.frozenDates.isEmpty && saved.failedOnDay == nil else {
                 throw GoalStore.StoreError.invalidData
             }
             return
@@ -306,6 +393,12 @@ final class LearningGoalViewModel {
         var cal = Calendar(identifier: .gregorian)
         cal.timeZone = TimeZone(identifier: saved.timeZoneID)!
         let end = goal.duration.endDate(from: goal.startDate, calendar: cal)
+        if let day = saved.failedOnDay {
+            guard day == cal.startOfDay(for: day), day >= goal.startDate, day < end,
+                  !saved.learnedDates.contains(day), !saved.frozenDates.contains(day) else {
+                throw GoalStore.StoreError.invalidData
+            }
+        }
         guard !cleanTitle(goal.title).isEmpty,
               goal.startDate == cal.startOfDay(for: goal.startDate),
               saved.frozenDates.count <= goal.duration.freezeLimit,

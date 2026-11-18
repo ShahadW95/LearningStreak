@@ -15,6 +15,7 @@ struct ActivityView: View {
                         if viewModel.isGoalFinished {
                             resultContent.padding(.top, 50)
                         } else {
+                            if viewModel.recoveryDay != nil { recoveryNotice.padding(.top, 20) }
                             Spacer(minLength: 32)
                             learnedButton(diameter: min(geometry.size.width - 88, 280))
                             Spacer(minLength: 32)
@@ -44,7 +45,7 @@ struct ActivityView: View {
                     headerIcon("calendar")
                 }.accessibilityLabel("Open activity calendar")
                 if let goal = viewModel.currentGoal {
-                    NavigationLink { EditGoalView(viewModel: viewModel, goal: goal) } label: {
+                    NavigationLink { EditGoalView(viewModel: viewModel, goal: goal, isNewCycle: viewModel.isGoalFinished) } label: {
                         headerIcon("target")
                     }.accessibilityLabel("Change learning goal")
                 }
@@ -98,37 +99,67 @@ struct ActivityView: View {
         .accessibilityElement(children: .combine)
     }
 
-    // الزر الدائري يتعطل بعد التسجيل. وجود Freeze لا يمنع التعلّم: يستبدله ويرجع رصيده.
+    // لون رمادي يعني Learned مختار؛ يظل الزر فعالًا لإلغاء التسجيل عند الضغط مرة ثانية.
     private func learnedButton(diameter: CGFloat) -> some View {
-        Button { viewModel.logLearnedToday() } label: {
-            Text(viewModel.hasLearnedToday ? "Logged as Learned" : "Log as Learned")
+        Button { viewModel.toggleLearned() } label: {
+            Text(viewModel.hasLearnedActivityDay ? "Logged as Learned" : "Log as Learned")
                 .font(.subheadline.weight(.semibold))
-                .foregroundStyle(viewModel.hasLearnedToday ? Color.secondary : Color.white)
+                .foregroundStyle(viewModel.hasLearnedActivityDay ? Color.secondary : Color.white)
                 .multilineTextAlignment(.center).padding(24)
                 .frame(width: diameter, height: diameter)
-                .background(viewModel.hasLearnedToday ? Color(white: 0.09) : StreakStyle.orange, in: Circle())
-                .overlay(Circle().strokeBorder(.white.opacity(viewModel.hasLearnedToday ? 0.15 : 0.55)))
+                .background(viewModel.hasLearnedActivityDay ? Color(white: 0.09) : StreakStyle.orange, in: Circle())
+                .overlay(Circle().strokeBorder(.white.opacity(viewModel.hasLearnedActivityDay ? 0.15 : 0.55)))
         }
-        .buttonStyle(.plain).disabled(!viewModel.canLogToday)
-        .accessibilityHint("Records learning for today only")
+        .buttonStyle(.plain).disabled(!viewModel.canLogSelectedDay)
+        .accessibilityHint(viewModel.hasLearnedActivityDay ? "Tap again to undo learning for the displayed day" : "Records learning for the displayed day")
+        .accessibilityAddTraits(viewModel.hasLearnedActivityDay ? [.isSelected] : [])
     }
 
     // حالات الزر: متاح، جُمّد اليوم، الرصيد انتهى، أو تم التعلّم. المنع موجود بالـ ViewModel أيضًا.
     private var freezeControls: some View {
         VStack(spacing: 14) {
-            Button { viewModel.freezeToday() } label: {
-                Text(viewModel.hasFrozenToday ? "Frozen for a day" : "Freeze for a day")
+            Button { viewModel.toggleFrozen() } label: {
+                Text(viewModel.hasFrozenActivityDay ? "Frozen for a day" : "Freeze for a day")
                     .font(.subheadline.weight(.medium))
-                    .foregroundStyle(viewModel.canFreezeToday ? Color.white : Color.secondary)
+                    .foregroundStyle(viewModel.canFreezeSelectedDay && !viewModel.hasFrozenActivityDay ? Color.white : Color.secondary)
                     .frame(maxWidth: .infinity, minHeight: 44)
-                    .background(viewModel.canFreezeToday ? StreakStyle.cyan : Color(white: 0.08), in: Capsule())
+                    .background(viewModel.canFreezeSelectedDay && !viewModel.hasFrozenActivityDay ? StreakStyle.cyan : Color(white: 0.08), in: Capsule())
                     .overlay(Capsule().strokeBorder(.white.opacity(0.25)))
             }
-            .buttonStyle(.plain).disabled(!viewModel.canFreezeToday)
+            .buttonStyle(.plain).disabled(!viewModel.canFreezeSelectedDay)
+            .accessibilityHint(viewModel.hasFrozenActivityDay ? "Tap again to undo freeze for the displayed day" : "Replaces learning for the displayed day with a freeze if available")
+            .accessibilityAddTraits(viewModel.hasFrozenActivityDay ? [.isSelected] : [])
             Text("\(viewModel.freezeCount) out of \(viewModel.freezeLimit) Freezes used")
                 .font(.caption).foregroundStyle(.secondary)
         }
         .padding(.horizontal, 36)
+    }
+
+    // يظهر فقط وقت تعويض أمس؛ لا نخفي عن المستخدم أن الضغط يسجل لليوم الفائت.
+    private var recoveryNotice: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            if let day = viewModel.recoveryDay {
+                Label(viewModel.hasRecordedRecoveryDay ? "Yesterday is recorded" : "8-hour grace period", systemImage: "clock")
+                    .font(.headline)
+                Text("These buttons update \(day, format: .dateTime.month(.abbreviated).day()), not today.")
+                    .font(.subheadline)
+                if viewModel.hasRecordedRecoveryDay {
+                    Text("Tap the selected button to undo, switch your choice, or continue to today.")
+                        .font(.caption).foregroundStyle(.secondary)
+                    Button("Continue to Today") { viewModel.continueToToday() }
+                        .font(.subheadline.weight(.semibold)).foregroundStyle(StreakStyle.orange)
+                        .buttonStyle(.plain).frame(minHeight: 44)
+                } else {
+                    Text("Log or freeze before \(viewModel.deadline(for: day), format: .dateTime.hour().minute()) to keep your streak.")
+                        .font(.caption)
+                    Text(viewModel.deadline(for: day), style: .timer)
+                        .font(.subheadline.monospacedDigit()).foregroundStyle(StreakStyle.orange)
+                }
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading).padding(16)
+        .background(Color(white: 0.06), in: RoundedRectangle(cornerRadius: 16))
+        .overlay(RoundedRectangle(cornerRadius: 16).strokeBorder(StreakStyle.orange.opacity(0.35)))
     }
 
     // نهاية الفترة لها حالتان مثل المرجع؛ Set a goal يسمح باختيار نفس الهدف أو تغييره.
@@ -139,7 +170,7 @@ struct ActivityView: View {
                 .padding(.bottom, 16)
             Text(viewModel.didMeetGoal ? "Well done!" : "You didn't reach your goal this time.")
                 .font(.headline).multilineTextAlignment(.center)
-            Text(viewModel.didMeetGoal ? "Ready for your next goal?" : "Want to set another goal?")
+            Text(viewModel.didMeetGoal ? "Ready for your next goal?" : "The grace period ended without a log or freeze. Start a new goal when you’re ready.")
                 .font(.subheadline).foregroundStyle(.secondary)
             if let goal = viewModel.currentGoal {
                 NavigationLink {

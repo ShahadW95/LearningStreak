@@ -14,8 +14,9 @@ struct EditGoalView: View {
     init(viewModel: LearningGoalViewModel, goal: LearningGoal, isNewCycle: Bool = false) {
         self.viewModel = viewModel
         self.isNewCycle = isNewCycle
-        _title = State(initialValue: goal.title)
-        _duration = State(initialValue: goal.duration)
+        // دورة جديدة تبدأ بحقول البداية، ولا تورث اسم الهدف السابق أو مدته.
+        _title = State(initialValue: isNewCycle ? "" : goal.title)
+        _duration = State(initialValue: isNewCycle ? .week : goal.duration)
     }
 
     // نفس الاسم والمدة ليس تعديلًا أثناء الهدف، لكن يسمح بإعادة نفس الهدف بعد انتهاء مدته.
