@@ -19,6 +19,7 @@ enum GoalDuration: String, CaseIterable, Codable {
         let component: Calendar.Component
         let value: Int
         switch self {
+        // أسبوع = سبعة أيام تقويمية متتالية؛ لا نتجاوز السبت أو الأحد أو أي يوم آخر.
         case .week: (component, value) = (.day, 7)
         case .month: (component, value) = (.month, 1)
         case .year: (component, value) = (.year, 1)

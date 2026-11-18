@@ -166,14 +166,18 @@ struct ActivityView: View {
                 .font(.system(size: 44)).foregroundStyle(StreakStyle.orange)
                 .padding(.bottom, 16)
             Text(viewModel.didMeetGoal ? "Well done!" : "You didn't reach your goal this time.")
-                .font(.headline).multilineTextAlignment(.center)
-            Text(viewModel.didMeetGoal ? "Ready for your next goal?" : "The grace period ended without a log or freeze. Start a new goal when you’re ready.")
+                .font(.headline)
+                .multilineTextAlignment(.center)
+                .frame(maxWidth: .infinity, alignment: .center)
+            Text(viewModel.didMeetGoal ? "Ready for your next goal?" : "Want to set another goal?")
                 .font(.subheadline).foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+                .frame(maxWidth: .infinity, alignment: .center)
             if let goal = viewModel.currentGoal {
                 NavigationLink {
                     EditGoalView(viewModel: viewModel, goal: goal, isNewCycle: true)
                 } label: {
-                    Label("Set a goal", systemImage: "target")
+                    Label("Set a goal", systemImage: "pencil.and.outline")
                         .font(.subheadline).padding(.horizontal, 20).frame(minHeight: 44)
                         .foregroundStyle(.white)
                         .streakGlass(in: Capsule(), tint: StreakStyle.orange)

@@ -141,7 +141,8 @@ struct StreakPageHeader: View {
     }
 }
 
-// تنسيق مشترك: الأزرار تفاعلية، والبطاقات للعرض فقط. الشكل والحجم واللون يحددها كل مكوّن.
+// تنسيق مشترك: نحافظ على مادة Apple الحقيقية، ونضيف حافة مضيئة لتبقى واضحة فوق الأسود.
+// نخفف tint وحده، وليس opacity العنصر كله؛ النص والتفاعل يبقيان واضحين.
 extension View {
     @ViewBuilder
     func streakGlass<S: InsettableShape>(
@@ -149,28 +150,33 @@ extension View {
         tint: Color? = nil,
         interactive: Bool = true
     ) -> some View {
-        if #available(iOS 26.0, *) {
-            self.glassEffect(
-                .regular.tint(tint).interactive(interactive),
-                in: shape
-            )
-        } else {
-            self.background(tint ?? Color(white: 0.1), in: shape)
-                .overlay(shape.strokeBorder(.white.opacity(0.25)))
+        Group {
+            if #available(iOS 26.0, *) {
+                self.glassEffect(
+                    .regular.tint(tint?.opacity(0.72)).interactive(interactive),
+                    in: shape
+                )
+            } else {
+                self.background(tint ?? Color(white: 0.1), in: shape)
+            }
         }
-    }
-}
-
-// زر تأكيد بارز: tint هنا يلون جسم الزر، بخلاف plain الذي قد يظهر كلون للنص فقط.
-extension View {
-    @ViewBuilder
-    func streakConfirmationButton() -> some View {
-        if #available(iOS 26.0, *) {
-            self.buttonStyle(.glassProminent)
-                .tint(StreakStyle.orange)
-        } else {
-            self.buttonStyle(.borderedProminent)
-                .tint(StreakStyle.orange)
+        // الحافة إضافية للشكل المرجعي وليست بديلًا عن glassEffect.
+        .overlay {
+            shape.strokeBorder(
+                LinearGradient(
+                    stops: [
+                        .init(color: .white.opacity(0.60), location: 0),
+                        .init(color: .white.opacity(0.12), location: 0.38),
+                        .init(color: .white.opacity(0.05), location: 0.65),
+                        .init(color: .white.opacity(0.30), location: 1)
+                    ],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                ),
+                lineWidth: 1.2
+            )
+            .allowsHitTesting(false)
+            .accessibilityHidden(true)
         }
     }
 }

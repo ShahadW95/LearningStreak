@@ -10,6 +10,7 @@ struct EditGoalView: View {
     @State private var duration: GoalDuration
     @State private var confirmingUpdate = false
     @AccessibilityFocusState private var confirmationFocused: Bool
+    @ScaledMetric(relativeTo: .subheadline) private var confirmationButtonHeight: CGFloat = 44
     @State private var validationMessage: String?
 
     init(viewModel: LearningGoalViewModel, goal: LearningGoal, isNewCycle: Bool = false) {
@@ -59,17 +60,20 @@ struct EditGoalView: View {
     private var confirmationPopup: some View {
         ZStack {
             Color.black.opacity(0.55).ignoresSafeArea()
-            VStack(alignment: .leading, spacing: 16) {
+            VStack(alignment: .leading, spacing: 14) {
                 Text(isNewCycle ? "Set a goal" : "Update goal")
                     .font(.headline).foregroundStyle(.white)
                     .accessibilityFocused($confirmationFocused)
                 Text("If you update now, your streak will start over.")
                     .font(.subheadline).foregroundStyle(.secondary)
-                HStack(spacing: 12) {
+                HStack(spacing: 10) {
                     Button { confirmingUpdate = false } label: {
                         Text("Dismiss")
+                            .font(.subheadline.weight(.medium))
                             .foregroundStyle(.white)
-                            .frame(maxWidth: .infinity, minHeight: 44)
+                            .lineLimit(1).minimumScaleFactor(0.7)
+                            .frame(maxWidth: .infinity)
+                            .frame(height: confirmationButtonHeight)
                             .streakGlass(in: Capsule())
                     }
                     .buttonStyle(.plain)
@@ -84,15 +88,19 @@ struct EditGoalView: View {
                         }
                     } label: {
                         Text(isNewCycle ? "Start" : "Update")
+                            .font(.subheadline.weight(.medium))
                             .foregroundStyle(.white)
-                            .frame(maxWidth: .infinity, minHeight: 44)
+                            .lineLimit(1).minimumScaleFactor(0.7)
+                            .frame(maxWidth: .infinity)
+                            .frame(height: confirmationButtonHeight)
+                            .streakGlass(in: Capsule(), tint: StreakStyle.orange)
                     }
-                    .buttonBorderShape(.capsule)
-                    .streakConfirmationButton()
+                    // نفس تنسيق وحجم Dismiss؛ الاختلاف الوحيد لون المادة.
+                    .buttonStyle(.plain)
                     .keyboardShortcut(.defaultAction)
                 }
             }
-            .padding(20).frame(maxWidth: 340)
+            .padding(18).frame(maxWidth: 300)
             .streakGlass(in: RoundedRectangle(cornerRadius: 28), interactive: false)
             .padding(.horizontal, 24)
             .accessibilityElement(children: .contain)
