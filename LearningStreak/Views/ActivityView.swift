@@ -46,7 +46,7 @@ struct ActivityView: View {
                 }.accessibilityLabel("Open activity calendar")
                 if let goal = viewModel.currentGoal {
                     NavigationLink { EditGoalView(viewModel: viewModel, goal: goal, isNewCycle: viewModel.isGoalFinished) } label: {
-                        headerIcon("target")
+                        headerIcon("pencil.and.outline")
                     }.accessibilityLabel("Change learning goal")
                 }
             }
@@ -57,8 +57,7 @@ struct ActivityView: View {
     private func headerIcon(_ symbol: String) -> some View {
         Image(systemName: symbol).font(.title3).foregroundStyle(.white)
             .frame(width: 44, height: 44)
-            .background(Color(white: 0.08), in: Circle())
-            .overlay(Circle().strokeBorder(.white.opacity(0.25)))
+            .streakGlass(in: Circle())
     }
 
     // نفس مكوّن تلوين اليوم مستخدم هنا وفي شاشة التقويم؛ الصف ليس لاختيار يوم التسجيل.
@@ -94,8 +93,8 @@ struct ActivityView: View {
             Text(title).font(.caption2)
         }
         .frame(maxWidth: .infinity).padding(.vertical, 16)
-        .background(Color(white: 0.035), in: RoundedRectangle(cornerRadius: 28))
-        .overlay(RoundedRectangle(cornerRadius: 28).strokeBorder(.white.opacity(0.22)))
+        // البطاقة ليست زرًا؛ نستخدم المادة الزجاجية بدون استجابة للمس.
+        .streakGlass(in: RoundedRectangle(cornerRadius: 28), interactive: false)
         .accessibilityElement(children: .combine)
     }
 
@@ -107,8 +106,7 @@ struct ActivityView: View {
                 .foregroundStyle(viewModel.hasLearnedActivityDay ? Color.secondary : Color.white)
                 .multilineTextAlignment(.center).padding(24)
                 .frame(width: diameter, height: diameter)
-                .background(viewModel.hasLearnedActivityDay ? Color(white: 0.09) : StreakStyle.orange, in: Circle())
-                .overlay(Circle().strokeBorder(.white.opacity(viewModel.hasLearnedActivityDay ? 0.15 : 0.55)))
+                .streakGlass(in: Circle(), tint: viewModel.hasLearnedActivityDay ? nil : StreakStyle.orange)
         }
         .buttonStyle(.plain).disabled(!viewModel.canLogSelectedDay)
         .accessibilityHint(viewModel.hasLearnedActivityDay ? "Tap again to undo learning for the displayed day" : "Records learning for the displayed day")
@@ -123,8 +121,7 @@ struct ActivityView: View {
                     .font(.subheadline.weight(.medium))
                     .foregroundStyle(viewModel.canFreezeSelectedDay && !viewModel.hasFrozenActivityDay ? Color.white : Color.secondary)
                     .frame(maxWidth: .infinity, minHeight: 44)
-                    .background(viewModel.canFreezeSelectedDay && !viewModel.hasFrozenActivityDay ? StreakStyle.cyan : Color(white: 0.08), in: Capsule())
-                    .overlay(Capsule().strokeBorder(.white.opacity(0.25)))
+                    .streakGlass(in: Capsule(), tint: viewModel.canFreezeSelectedDay && !viewModel.hasFrozenActivityDay ? StreakStyle.cyan : nil)
             }
             .buttonStyle(.plain).disabled(!viewModel.canFreezeSelectedDay)
             .accessibilityHint(viewModel.hasFrozenActivityDay ? "Tap again to undo freeze for the displayed day" : "Replaces learning for the displayed day with a freeze if available")
@@ -178,7 +175,8 @@ struct ActivityView: View {
                 } label: {
                     Label("Set a goal", systemImage: "target")
                         .font(.subheadline).padding(.horizontal, 20).frame(minHeight: 44)
-                        .background(StreakStyle.orange, in: Capsule())
+                        .foregroundStyle(.white)
+                        .streakGlass(in: Capsule(), tint: StreakStyle.orange)
                 }
                 .buttonStyle(.plain).padding(.top, 80)
             }

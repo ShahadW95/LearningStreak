@@ -36,8 +36,8 @@ struct OnboardingView: View {
                     } label: {
                         Text("Start Learning").font(.subheadline.weight(.medium))
                             .padding(.horizontal, 24).frame(minHeight: 44)
-                            .background(StreakStyle.orange.opacity(viewModel.canStartLearning ? 1 : 0.4), in: Capsule())
-                            .overlay(Capsule().strokeBorder(.white.opacity(0.25)))
+                            .foregroundStyle(.white)
+                            .streakGlass(in: Capsule(), tint: StreakStyle.orange)
                     }
                     .buttonStyle(.plain)
                     .disabled(!viewModel.canStartLearning)
@@ -63,7 +63,8 @@ struct GoalFields: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            Text("I want to learn").font(.subheadline)
+            Text("I want to learn")
+                .font(.body.weight(.medium))
             TextField("Swift", text: $title)
                 .font(.body).textFieldStyle(.plain)
                 .focused(focused).submitLabel(.done)
@@ -71,7 +72,9 @@ struct GoalFields: View {
                 .padding(.top, 16).padding(.bottom, 12)
                 .accessibilityLabel("Learning goal")
             Divider()
-            Text("I want to learn it in a").font(.subheadline).padding(.top, 28)
+            Text("I want to learn it in a")
+                .font(.body.weight(.medium))
+                .padding(.top, 28)
             DurationPicker(selection: $duration).padding(.top, 12)
         }
     }
@@ -89,8 +92,7 @@ struct DurationPicker: View {
                     Text(duration.rawValue).font(.subheadline)
                         .foregroundStyle(selected ? Color.white : Color.secondary)
                         .padding(.horizontal, 20).frame(minHeight: 44)
-                        .background(selected ? StreakStyle.orange : Color(white: 0.10), in: Capsule())
-                        .overlay(Capsule().strokeBorder(.white.opacity(selected ? 0.5 : 0.2)))
+                        .streakGlass(in: Capsule(), tint: selected ? StreakStyle.orange : nil)
                 }
                 .buttonStyle(.plain)
                 .accessibilityAddTraits(selected ? [.isSelected] : [])
@@ -116,8 +118,7 @@ struct StreakPageHeader: View {
         HStack {
             Button { dismiss() } label: {
                 Image(systemName: "chevron.left").frame(width: 44, height: 44)
-                    .background(Color(white: 0.1), in: Circle())
-                    .overlay(Circle().strokeBorder(.white.opacity(0.25)))
+                    .streakGlass(in: Circle())
             }
             .accessibilityLabel("Back")
             Spacer()
@@ -127,8 +128,7 @@ struct StreakPageHeader: View {
                 Button(action: save) {
                     Image(systemName: "checkmark").font(.title3)
                         .frame(width: 44, height: 44)
-                        .background(StreakStyle.orange.opacity(saveEnabled ? 1 : 0.4), in: Circle())
-                        .overlay(Circle().strokeBorder(.white.opacity(0.45)))
+                        .streakGlass(in: Circle(), tint: StreakStyle.orange)
                 }
                 .disabled(!saveEnabled).accessibilityLabel("Save goal")
             } else {
@@ -138,5 +138,39 @@ struct StreakPageHeader: View {
         .buttonStyle(.plain).foregroundStyle(.white)
         .padding(.horizontal, 16).padding(.vertical, 8)
         .background(.black)
+    }
+}
+
+// تنسيق مشترك: الأزرار تفاعلية، والبطاقات للعرض فقط. الشكل والحجم واللون يحددها كل مكوّن.
+extension View {
+    @ViewBuilder
+    func streakGlass<S: InsettableShape>(
+        in shape: S,
+        tint: Color? = nil,
+        interactive: Bool = true
+    ) -> some View {
+        if #available(iOS 26.0, *) {
+            self.glassEffect(
+                .regular.tint(tint).interactive(interactive),
+                in: shape
+            )
+        } else {
+            self.background(tint ?? Color(white: 0.1), in: shape)
+                .overlay(shape.strokeBorder(.white.opacity(0.25)))
+        }
+    }
+}
+
+// زر تأكيد بارز: tint هنا يلون جسم الزر، بخلاف plain الذي قد يظهر كلون للنص فقط.
+extension View {
+    @ViewBuilder
+    func streakConfirmationButton() -> some View {
+        if #available(iOS 26.0, *) {
+            self.buttonStyle(.glassProminent)
+                .tint(StreakStyle.orange)
+        } else {
+            self.buttonStyle(.borderedProminent)
+                .tint(StreakStyle.orange)
+        }
     }
 }

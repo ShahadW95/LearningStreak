@@ -21,7 +21,10 @@ struct HistoryView: View {
                 }
                 .onAppear {
                     // نفتح عند الشهر الحالي؛ التمرير للأعلى يكشف سجل الشهور السابقة.
-                    if let month = viewModel.calendarMonths.last {
+                    if let month = viewModel.calendar.dateInterval(
+                        of: .month,
+                        for: viewModel.today
+                    )?.start {
                         proxy.scrollTo(month, anchor: .top)
                     }
                 }

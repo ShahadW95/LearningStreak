@@ -301,7 +301,8 @@ final class LearningGoalViewModel {
     var calendarMonths: [Date] {
         let firstDate = (allLearnedDates.union(allFrozenDates).union([currentGoal?.startDate ?? today])).min() ?? today
         let first = calendar.dateInterval(of: .month, for: min(firstDate, today))!.start
-        let last = calendar.dateInterval(of: .month, for: today)!.start
+        let currentMonth = calendar.dateInterval(of: .month, for: today)!.start
+        let last = calendar.date(byAdding: .month, value: 2, to: currentMonth)!
         var result: [Date] = []
         var month = first
         while month <= last {

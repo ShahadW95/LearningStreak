@@ -9,6 +9,7 @@ struct EditGoalView: View {
     @State private var title: String
     @State private var duration: GoalDuration
     @State private var confirmingUpdate = false
+    @AccessibilityFocusState private var confirmationFocused: Bool
     @State private var validationMessage: String?
 
     init(viewModel: LearningGoalViewModel, goal: LearningGoal, isNewCycle: Bool = false) {
@@ -29,6 +30,7 @@ struct EditGoalView: View {
     var body: some View {
         VStack(spacing: 0) {
             StreakPageHeader(title: "Learning Goal", save: {
+                titleFocused = false
                 confirmingUpdate = true
             }, saveEnabled: canSave)
             ScrollView {
@@ -39,19 +41,11 @@ struct EditGoalView: View {
         }
         .background(.black)
         .toolbar(.hidden, for: .navigationBar)
-        // Alert نظامي واضح قبل بدء دورة جديدة. Cancel/الرجوع لا يستدعيان الحفظ.
-        .alert(isNewCycle ? "Set a goal" : "Update goal", isPresented: $confirmingUpdate) {
-            Button("Dismiss", role: .cancel) { }
-            Button(isNewCycle ? "Start" : "Update") {
-                if viewModel.updateGoal(title: title, duration: duration) {
-                    dismiss()
-                } else {
-                    validationMessage = viewModel.errorMessage
-                    viewModel.errorMessage = nil
-                }
-            }
-        } message: {
-            Text("If you update now, your streak will start over. Previous activity stays in your calendar.")
+        // نوقف التفاعل بالخلفية أثناء التأكيد؛ إجراءات الحفظ تبقى نفسها.
+        .allowsHitTesting(!confirmingUpdate)
+        .accessibilityHidden(confirmingUpdate)
+        .overlay {
+            if confirmingUpdate { confirmationPopup }
         }
         .alert("Couldn't save goal", isPresented: Binding(
             get: { validationMessage != nil },
@@ -59,5 +53,51 @@ struct EditGoalView: View {
         )) {
             Button("OK", role: .cancel) { validationMessage = nil }
         } message: { Text(validationMessage ?? "") }
+    }
+
+    // نافذة مخصصة لمطابقة التصميم: Update برتقالي ممتلئ والنصوص بيضاء.
+    private var confirmationPopup: some View {
+        ZStack {
+            Color.black.opacity(0.55).ignoresSafeArea()
+            VStack(alignment: .leading, spacing: 16) {
+                Text(isNewCycle ? "Set a goal" : "Update goal")
+                    .font(.headline).foregroundStyle(.white)
+                    .accessibilityFocused($confirmationFocused)
+                Text("If you update now, your streak will start over.")
+                    .font(.subheadline).foregroundStyle(.secondary)
+                HStack(spacing: 12) {
+                    Button { confirmingUpdate = false } label: {
+                        Text("Dismiss")
+                            .foregroundStyle(.white)
+                            .frame(maxWidth: .infinity, minHeight: 44)
+                            .streakGlass(in: Capsule())
+                    }
+                    .buttonStyle(.plain)
+                    .keyboardShortcut(.cancelAction)
+                    Button {
+                        confirmingUpdate = false
+                        if viewModel.updateGoal(title: title, duration: duration) {
+                            dismiss()
+                        } else {
+                            validationMessage = viewModel.errorMessage
+                            viewModel.errorMessage = nil
+                        }
+                    } label: {
+                        Text(isNewCycle ? "Start" : "Update")
+                            .foregroundStyle(.white)
+                            .frame(maxWidth: .infinity, minHeight: 44)
+                    }
+                    .buttonBorderShape(.capsule)
+                    .streakConfirmationButton()
+                    .keyboardShortcut(.defaultAction)
+                }
+            }
+            .padding(20).frame(maxWidth: 340)
+            .streakGlass(in: RoundedRectangle(cornerRadius: 28), interactive: false)
+            .padding(.horizontal, 24)
+            .accessibilityElement(children: .contain)
+            .accessibilityAddTraits(.isModal)
+            .onAppear { confirmationFocused = true }
+        }
     }
 }
